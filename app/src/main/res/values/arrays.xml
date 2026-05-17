@@ -131,4 +131,13 @@
         <item>right</item>
         <item>left</item>
     </string-array>
+
+    <string-array name="screen_orientation_names">
+        <item>@string/orientation_landscape</item>
+        <item>@string/orientation_portrait</item>
+    </string-array>
+    <string-array name="screen_orientation_values" translatable="false">
+        <item>landscape</item>
+        <item>portrait</item>
+    </string-array>
 </resources>

@@ -301,8 +301,9 @@
     <string name="analogscroll_right">Right analog stick</string>
     <string name="analogscroll_left">Left analog stick</string>
 
-    <!-- Stream menu -->
-    <string name="stream_menu_title">Menu</string>
-    <string name="stream_menu_keyboard">Show Keyboard</string>
-    <string name="stream_menu_exit">Exit Stream</string>
+    <!-- Screen orientation -->
+    <string name="title_screen_orientation">Screen orientation</string>
+    <string name="summary_screen_orientation">Force a specific screen orientation while streaming</string>
+    <string name="orientation_landscape">Landscape</string>
+    <string name="orientation_portrait">Portrait</string>
 </resources>

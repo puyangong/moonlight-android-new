@@ -378,6 +378,60 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
 
         inForeground = true;
         startComputerUpdates();
+
+        // Try to auto-resume the last streaming session
+        tryAutoResumeSession();
+    }
+
+    private void tryAutoResumeSession() {
+        SharedPreferences prefs = getSharedPreferences(Game.LAST_STREAM_SESSION_PREF, MODE_PRIVATE);
+        String host = prefs.getString("host", null);
+        if (host == null) return;
+
+        long timestamp = prefs.getLong("timestamp", 0);
+        // Only auto-resume if session was saved within the last 2 minutes
+        if (System.currentTimeMillis() - timestamp > 2 * 60 * 1000) {
+            prefs.edit().clear().apply();
+            return;
+        }
+
+        int port = prefs.getInt("port", 0);
+        int httpsPort = prefs.getInt("httpsPort", 0);
+        String appName = prefs.getString("appName", null);
+        int appId = prefs.getInt("appId", 0);
+        boolean appHdr = prefs.getBoolean("appHdr", false);
+        String uniqueId = prefs.getString("uniqueId", null);
+        String pcUuid = prefs.getString("pcUuid", null);
+        String pcName = prefs.getString("pcName", null);
+
+        if (appName == null || uniqueId == null || pcUuid == null) {
+            prefs.edit().clear().apply();
+            return;
+        }
+
+        // Build the launch intent directly
+        Intent intent = new Intent(this, Game.class);
+        intent.putExtra(Game.EXTRA_HOST, host);
+        intent.putExtra(Game.EXTRA_PORT, port);
+        intent.putExtra(Game.EXTRA_HTTPS_PORT, httpsPort);
+        intent.putExtra(Game.EXTRA_APP_NAME, appName);
+        intent.putExtra(Game.EXTRA_APP_ID, appId);
+        intent.putExtra(Game.EXTRA_APP_HDR, appHdr);
+        intent.putExtra(Game.EXTRA_UNIQUEID, uniqueId);
+        intent.putExtra(Game.EXTRA_PC_UUID, pcUuid);
+        intent.putExtra(Game.EXTRA_PC_NAME, pcName);
+
+        // Restore server certificate
+        String certBase64 = prefs.getString("serverCert", null);
+        if (certBase64 != null) {
+            byte[] certData = android.util.Base64.decode(certBase64, android.util.Base64.DEFAULT);
+            intent.putExtra(Game.EXTRA_SERVER_CERT, certData);
+        }
+
+        // Clear the saved session
+        prefs.edit().clear().apply();
+
+        startActivity(intent);
     }
 
     @Override

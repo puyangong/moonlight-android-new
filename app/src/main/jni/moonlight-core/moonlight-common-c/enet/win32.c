@@ -7,7 +7,7 @@
 #define ENET_BUILDING_LIB 1
 #include "enet/enet.h"
 #include <windows.h>
-#include <Mswsock.h>
+#include <mswsock.h>
 #ifndef HAS_QOS_FLOWID
 typedef UINT32 QOS_FLOWID;
 #endif
@@ -23,7 +23,7 @@ static enet_uint32 timeBase = 0;
 
 #if !(defined(WINAPI_FAMILY) && WINAPI_FAMILY == WINAPI_FAMILY_APP)
 # define HAS_QWAVE
-# include <VersionHelpers.h>
+# include <versionhelpers.h>
 #else
 # define IsWindows10OrGreater() TRUE
 #endif
@@ -182,6 +182,28 @@ enet_address_equal (ENetAddress * address1, ENetAddress * address2)
         sin6b = (struct sockaddr_in6 *) & address2 -> address;
         return sin6a -> sin6_port == sin6b -> sin6_port &&
             ! memcmp (& sin6a -> sin6_addr, & sin6b -> sin6_addr, sizeof (sin6a -> sin6_addr));
+    }
+    default:
+    {
+        return 0;
+    }
+    }
+}
+
+int
+enet_address_wildcard (const ENetAddress * address)
+{
+    switch (address -> address.ss_family)
+    {
+    case AF_INET:
+    {
+        struct sockaddr_in *sin = (struct sockaddr_in *) & address -> address;
+        return sin -> sin_addr.S_un.S_addr == INADDR_ANY;
+    }
+    case AF_INET6:
+    {
+        struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *) & address -> address;
+        return ! memcmp (& sin6 -> sin6_addr, & in6addr_any, sizeof (in6addr_any));
     }
     default:
     {

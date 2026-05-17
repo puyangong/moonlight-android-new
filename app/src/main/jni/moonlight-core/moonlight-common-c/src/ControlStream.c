@@ -3,6 +3,10 @@
 // This is a private header, but it just contains some time macros
 #include <enet/time.h>
 
+#ifndef MIN
+#define MIN(x, y) ((x) < (y) ? (x) : (y))
+#endif
+
 // NV control stream packet header for TCP
 typedef struct _NVCTL_TCP_PACKET_HEADER {
     unsigned short type;
@@ -62,6 +66,22 @@ typedef struct _QUEUED_ASYNC_CALLBACK {
             uint8_t g;
             uint8_t b;
         } setControllerLed;
+        struct {
+            uint16_t controllerNumber;
+            /**
+             * 0x04 - Right trigger
+             * 0x08 - Left trigger
+             */
+            uint8_t eventFlags;
+            uint8_t typeLeft;
+            uint8_t typeRight;
+            // arrays of size DS_EFFECT_PAYLOAD_SIZE
+            // this is an opaque payload that will be read directly from the joypad and set as is to the client controller
+            // if you are curious about the actual data, there's some rationale in
+            // https://gist.github.com/Nielk1/6d54cc2c00d2201ccb8c2720ad7538db
+            uint8_t left[DS_EFFECT_PAYLOAD_SIZE];
+            uint8_t right[DS_EFFECT_PAYLOAD_SIZE];
+        } dsAdaptiveTrigger;
     } data;
     LINKED_BLOCKING_QUEUE_ENTRY entry;
 } QUEUED_ASYNC_CALLBACK, *PQUEUED_ASYNC_CALLBACK;
@@ -118,6 +138,7 @@ static PPLT_CRYPTO_CONTEXT decryptionCtx;
 #define IDX_RUMBLE_TRIGGER_DATA 9
 #define IDX_SET_MOTION_EVENT 10
 #define IDX_SET_RGB_LED 11
+#define IDX_DS_ADAPTIVE_TRIGGERS 12
 
 #define CONTROL_STREAM_TIMEOUT_SEC 10
 #define CONTROL_STREAM_LINGER_TIMEOUT_SEC 2
@@ -191,6 +212,7 @@ static const short packetTypesGen7Enc[] = {
     0x5500, // Rumble triggers (Sunshine protocol extension)
     0x5501, // Set motion event (Sunshine protocol extension)
     0x5502, // Set RGB LED (Sunshine protocol extension)
+    0x5503, // Set Adaptive Triggers (Sunshine protocol extension)
 };
 
 static const char requestIdrFrameGen3[] = { 0, 0 };
@@ -956,6 +978,14 @@ static void asyncCallbackThreadFunc(void* context) {
                                                   queuedCb->data.setMotionEventState.motionType,
                                                   queuedCb->data.setMotionEventState.reportRateHz);
             break;
+        case IDX_DS_ADAPTIVE_TRIGGERS:
+            ListenerCallbacks.setAdaptiveTriggers(queuedCb->data.dsAdaptiveTrigger.controllerNumber,
+                                                  queuedCb->data.dsAdaptiveTrigger.eventFlags,
+                                                  queuedCb->data.dsAdaptiveTrigger.typeLeft,
+                                                  queuedCb->data.dsAdaptiveTrigger.typeRight,
+                                                  queuedCb->data.dsAdaptiveTrigger.left,
+                                                  queuedCb->data.dsAdaptiveTrigger.right);
+            break;
         default:
             // Unhandled packet type from queueAsyncCallback()
             LC_ASSERT(false);
@@ -971,7 +1001,8 @@ static bool needsAsyncCallback(unsigned short packetType) {
            packetType == packetTypes[IDX_RUMBLE_TRIGGER_DATA] ||
            packetType == packetTypes[IDX_SET_MOTION_EVENT] ||
            packetType == packetTypes[IDX_SET_RGB_LED] ||
-           packetType == packetTypes[IDX_HDR_INFO];
+           packetType == packetTypes[IDX_HDR_INFO] ||
+           packetType == packetTypes[IDX_DS_ADAPTIVE_TRIGGERS];
 }
 
 static void queueAsyncCallback(PNVCTL_ENET_PACKET_HEADER_V1 ctlHdr, int packetLength) {
@@ -1022,6 +1053,16 @@ static void queueAsyncCallback(PNVCTL_ENET_PACKET_HEADER_V1 ctlHdr, int packetLe
     else if (ctlHdr->type == packetTypes[IDX_HDR_INFO]) {
         queuedCb->typeIndex = IDX_HDR_INFO;
     }
+    else if (ctlHdr->type == packetTypes[IDX_DS_ADAPTIVE_TRIGGERS]){
+        BbGet16(&bb, &queuedCb->data.dsAdaptiveTrigger.controllerNumber);
+        BbGet8(&bb, &queuedCb->data.dsAdaptiveTrigger.eventFlags);
+        BbGet8(&bb, &queuedCb->data.dsAdaptiveTrigger.typeLeft);
+        BbGet8(&bb, &queuedCb->data.dsAdaptiveTrigger.typeRight);
+
+        BbGetBytes(&bb, queuedCb->data.dsAdaptiveTrigger.left, DS_EFFECT_PAYLOAD_SIZE);
+        BbGetBytes(&bb, queuedCb->data.dsAdaptiveTrigger.right, DS_EFFECT_PAYLOAD_SIZE);
+        queuedCb->typeIndex = IDX_DS_ADAPTIVE_TRIGGERS;
+    }
     else {
         // Unhandled packet type from needsAsyncCallback()
         LC_ASSERT(false);
@@ -1064,9 +1105,23 @@ static void controlReceiveThreadFunc(void* context) {
                 // We add 1 ms just to ensure we're unlikely to undershoot the sleep() and have to
                 // do a tiny sleep for another iteration before the timeout is ready to be serviced.
                 waitTimeMs = ENET_TIME_DIFFERENCE(peer->nextTimeout, client->serviceTime) + 1;
-                if (waitTimeMs > peer->pingInterval) {
-                    waitTimeMs = peer->pingInterval;
+            }
+
+            // Ensure we don't sleep through a ping
+            if (peer->lastReceiveTime && peer->lastSendTime) {
+                enet_uint32 timeSinceLastRecv = ENET_TIME_DIFFERENCE(client->serviceTime, peer->lastReceiveTime);
+                enet_uint32 timeSinceLastSend = ENET_TIME_DIFFERENCE(client->serviceTime, peer->lastSendTime);
+                enet_uint32 timeSinceLastComm = MIN(timeSinceLastSend, timeSinceLastRecv);
+
+                if (timeSinceLastComm >= peer->pingInterval) {
+                    // Ping is due now for this peer
+                    waitTimeMs = 0;
+                } else {
+                    waitTimeMs = MIN(waitTimeMs, peer->pingInterval - timeSinceLastComm);
                 }
+            }
+            else {
+                waitTimeMs = MIN(waitTimeMs, peer->pingInterval);
             }
         }
 

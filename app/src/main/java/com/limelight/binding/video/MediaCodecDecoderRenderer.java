@@ -1301,6 +1301,24 @@ public class MediaCodecDecoderRenderer extends VideoDecoderRenderer implements C
         videoDecoder.release();
     }
 
+    public void restartWithNewSurface(SurfaceHolder holder) {
+        setRenderTarget(holder);
+        stop();
+        if (videoDecoder != null) {
+            videoDecoder.release();
+            videoDecoder = null;
+        }
+        resetStopping();
+        setup(videoFormat, initialWidth, initialHeight, refreshRate);
+        if (videoDecoder != null) {
+            start();
+        }
+    }
+
+    private void resetStopping() {
+        stopping = false;
+    }
+
     @Override
     public void setHdrMode(boolean enabled, byte[] hdrMetadata) {
         // HDR metadata is only supported in Android 7.0 and later, so don't bother

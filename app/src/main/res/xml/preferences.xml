@@ -40,6 +40,13 @@
             android:key="checkbox_stretch_video"
             android:title="@string/title_checkbox_stretch_video"
             android:defaultValue="false" />
+        <ListPreference
+            android:key="list_screen_orientation"
+            android:title="@string/title_screen_orientation"
+            android:summary="@string/summary_screen_orientation"
+            android:entries="@array/screen_orientation_names"
+            android:entryValues="@array/screen_orientation_values"
+            android:defaultValue="landscape" />
     </PreferenceCategory>
     <PreferenceCategory android:title="@string/category_audio_settings">
         <ListPreference

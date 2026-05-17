@@ -29,6 +29,8 @@ import com.limelight.nvstream.input.MouseButtonPacket;
 import com.limelight.nvstream.jni.MoonBridge;
 import com.limelight.preferences.GlPreferences;
 import com.limelight.preferences.PreferenceConfiguration;
+import com.limelight.ui.FloatingWindow1;
+import com.limelight.ui.FloatingWindow2;
 import com.limelight.ui.GameGestures;
 import com.limelight.ui.StreamView;
 import com.limelight.utils.Dialog;
@@ -40,7 +42,6 @@ import com.limelight.utils.UiHelper;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.app.PictureInPictureParams;
 import android.app.Service;
 import android.content.ComponentName;
@@ -124,6 +125,8 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private boolean connected = false;
     private boolean autoEnterPip = false;
     private boolean surfaceCreated = false;
+    private boolean isInBackground = false;
+    private boolean decoderNeedsRestart = false;
     private boolean attemptedConnection = false;
     private int suppressPipRefCount = 0;
     private String pcName;
@@ -147,6 +150,19 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private TextView notificationOverlayView;
     private int requestedNotificationOverlayVisibility = View.GONE;
     private TextView performanceOverlayView;
+
+    private FloatingWindow1 floatingWindow1;
+    private FloatingWindow2 floatingWindow2;
+    private boolean scrollModeActive = false;
+    private float streamViewBaseX = 0, streamViewBaseY = 0;
+    private float streamViewBaseScale = 1.0f;
+    private float scrollTouchStartX, scrollTouchStartY;
+    private float scrollTouchStartDist;
+    private int scrollTouchPointerCount = 0;
+    private long lastScrollClickTime = 0;
+    private float lastScrollClickX = 0, lastScrollClickY = 0;
+    private static final int SCROLL_DOUBLE_TAP_TIME = 300;
+    private static final int SCROLL_DOUBLE_TAP_DISTANCE = 50;
 
     private MediaCodecDecoderRenderer decoderRenderer;
     private boolean reportedCrash;
@@ -208,6 +224,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
         // Change volume button behavior
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
+
+        // Prevent soft keyboard from adjusting layout (keeps floating windows in place)
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING);
 
         // Inflate the content
         setContentView(R.layout.activity_game);
@@ -272,6 +291,14 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         notificationOverlayView = findViewById(R.id.notificationOverlay);
 
         performanceOverlayView = findViewById(R.id.performanceOverlay);
+
+        // Initialize floating window 1
+        floatingWindow1 = findViewById(R.id.floatingWindow1);
+        setupFloatingWindow1();
+
+        // Initialize floating window 2
+        floatingWindow2 = findViewById(R.id.floatingWindow2);
+        setupFloatingWindow2();
 
         inputCaptureProvider = InputCaptureManager.getInputCaptureProvider(this, this);
 
@@ -536,41 +563,247 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         streamView.getHolder().addCallback(this);
     }
 
+    private void setupFloatingWindow1() {
+        floatingWindow1.setOnModeChangeListener(new FloatingWindow1.OnModeChangeListener() {
+            @Override
+            public void onModeChanged(FloatingWindow1.Mode mode) {
+                switch (mode) {
+                    case NONE:
+                        scrollModeActive = false;
+                        break;
+                    case SCROLL:
+                        scrollModeActive = true;
+                        streamViewBaseX = streamView.getTranslationX();
+                        streamViewBaseY = streamView.getTranslationY();
+                        streamViewBaseScale = streamView.getScaleX();
+                        break;
+                    case MOUSE_TOUCH:
+                        scrollModeActive = false;
+                        // Reinitialize touch contexts based on current prefConfig
+                        for (int i = 0; i < touchContextMap.length; i++) {
+                            if (!prefConfig.touchscreenTrackpad) {
+                                touchContextMap[i] = new AbsoluteTouchContext(conn, i, streamView);
+                            } else {
+                                touchContextMap[i] = new RelativeTouchContext(conn, i,
+                                        REFERENCE_HORIZ_RES, REFERENCE_VERT_RES,
+                                        streamView, prefConfig);
+                            }
+                        }
+                        break;
+                }
+            }
+        });
+
+        floatingWindow1.setOnDragListener(new FloatingWindow1.OnDragListener() {
+            @Override
+            public void onDrag(float x, float y) {
+                // Constrain to screen bounds
+                View parent = (View) floatingWindow1.getParent();
+                if (parent != null) {
+                    int maxX = parent.getWidth() - floatingWindow1.getWidth();
+                    int maxY = parent.getHeight() - floatingWindow1.getHeight();
+                    x = Math.max(0, Math.min(x, maxX));
+                    y = Math.max(0, Math.min(y, maxY));
+                }
+                floatingWindow1.setX(x);
+                floatingWindow1.setY(y);
+            }
+
+            @Override
+            public void onDragEnd() {
+                View parent = (View) floatingWindow1.getParent();
+                if (parent != null) {
+                    int parentWidth = parent.getWidth();
+                    int parentHeight = parent.getHeight();
+                    int fwWidth = floatingWindow1.getWidth();
+                    int fwHeight = floatingWindow1.getHeight();
+                    float currentX = floatingWindow1.getX();
+                    float currentY = floatingWindow1.getY();
+
+                    float distToLeft = currentX;
+                    float distToRight = parentWidth - fwWidth - currentX;
+                    float distToTop = currentY;
+                    float distToBottom = parentHeight - fwHeight - currentY;
+
+                    float minDist = Math.min(Math.min(distToLeft, distToRight), Math.min(distToTop, distToBottom));
+
+                    float targetX = currentX;
+                    float targetY = currentY;
+
+                    if (minDist == distToLeft) {
+                        targetX = 0;
+                    } else if (minDist == distToRight) {
+                        targetX = parentWidth - fwWidth;
+                    } else if (minDist == distToTop) {
+                        targetY = 0;
+                    } else if (minDist == distToBottom) {
+                        targetY = parentHeight - fwHeight;
+                    }
+
+                    floatingWindow1.animate().x(targetX).y(targetY).setDuration(200).start();
+
+                    saveFloatingWindow1Position(targetX, targetY, parentWidth, parentHeight);
+                }
+            }
+        });
+
+        floatingWindow1.setOnKeyboardToggleListener(new FloatingWindow1.OnKeyboardToggleListener() {
+            @Override
+            public void onKeyboardToggled(boolean active) {
+                InputMethodManager inputManager = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (active) {
+                    floatingWindow2.setVisibility(View.VISIBLE);
+                    inputManager.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0);
+                } else {
+                    floatingWindow2.setVisibility(View.GONE);
+                    inputManager.hideSoftInputFromWindow(streamView.getWindowToken(), 0);
+                }
+            }
+        });
+// Restore saved FloatingWindow1 position (post to wait for layout)
+        floatingWindow1.post(new Runnable() {
+            @Override
+            public void run() {
+                restoreFloatingWindow1Position();
+            }
+        });
+    }
+
+    private void setupFloatingWindow2() {
+        floatingWindow2.setOnKeyEventListener(new FloatingWindow2.OnKeyEventListener() {
+            @Override
+            public void onKeyEvent(int keyCode, boolean down) {
+                short translated = keyboardTranslator.translate(keyCode, -1);
+                if (translated != 0) {
+                    if (down) {
+                        conn.sendKeyboardInput(translated, KeyboardPacket.KEY_DOWN, (byte) 0, (byte) 0);
+                    } else {
+                        conn.sendKeyboardInput(translated, KeyboardPacket.KEY_UP, (byte) 0, (byte) 0);
+                        // When soft keyboard key is released, also release all held keys in FloatingWindow2
+                        if (floatingWindow2.isHoldModeActive()) {
+                            floatingWindow2.releaseAllHeldKeys();
+                        }
+                    }
+                }
+            }
+        });
+
+        floatingWindow2.setOnKeyboardToggleListener(new FloatingWindow2.OnKeyboardToggleListener() {
+            @Override
+            public void onKeyboardToggled(boolean active) {
+                InputMethodManager inputManager = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (active) {
+                    inputManager.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0);
+                } else {
+                    inputManager.hideSoftInputFromWindow(streamView.getWindowToken(), 0);
+                }
+            }
+        });
+    }
+
+    private void resetStreamViewTransform() {
+        streamView.setTranslationX(0);
+        streamView.setTranslationY(0);
+        streamView.setScaleX(1.0f);
+        streamView.setScaleY(1.0f);
+        streamViewBaseX = 0;
+        streamViewBaseY = 0;
+        streamViewBaseScale = 1.0f;
+    }
+
+    private boolean handleScrollModeTouch(View view, MotionEvent event) {
+        if (!scrollModeActive) return false;
+
+        int action = event.getActionMasked();
+        int pointerCount = event.getPointerCount();
+
+        switch (action) {
+            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_POINTER_DOWN:
+                scrollTouchPointerCount = pointerCount;
+                if (pointerCount > 1) {
+                    lastScrollClickTime = 0;
+                }
+                if (pointerCount == 1) {
+                    scrollTouchStartX = event.getX(0);
+                    scrollTouchStartY = event.getY(0);
+                } else if (pointerCount == 2) {
+                    float dx = event.getX(0) - event.getX(1);
+                    float dy = event.getY(0) - event.getY(1);
+                    scrollTouchStartDist = (float) Math.sqrt(dx * dx + dy * dy);
+                    scrollTouchStartX = (event.getX(0) + event.getX(1)) / 2;
+                    scrollTouchStartY = (event.getY(0) + event.getY(1)) / 2;
+                }
+                return true;
+
+            case MotionEvent.ACTION_MOVE:
+                if (pointerCount == 1 && scrollTouchPointerCount == 1) {
+                    float deltaX = event.getX(0) - scrollTouchStartX;
+                    float deltaY = event.getY(0) - scrollTouchStartY;
+                    streamView.setTranslationX(streamViewBaseX + deltaX);
+                    streamView.setTranslationY(streamViewBaseY + deltaY);
+                } else if (pointerCount >= 2) {
+                    float dx = event.getX(0) - event.getX(1);
+                    float dy = event.getY(0) - event.getY(1);
+                    float dist = (float) Math.sqrt(dx * dx + dy * dy);
+                    if (scrollTouchStartDist > 0) {
+                        float scale = streamViewBaseScale * (dist / scrollTouchStartDist);
+                        scale = Math.max(0.5f, Math.min(scale, 3.0f));
+                        streamView.setScaleX(scale);
+                        streamView.setScaleY(scale);
+                    }
+                }
+                return true;
+
+            case MotionEvent.ACTION_UP:
+                if (pointerCount == 1) {
+                    if (scrollTouchPointerCount == 1) {
+                        long now = System.currentTimeMillis();
+                        if (now - lastScrollClickTime < SCROLL_DOUBLE_TAP_TIME) {
+                            float dx = event.getX(0) - lastScrollClickX;
+                            float dy = event.getY(0) - lastScrollClickY;
+                            if (Math.abs(dx) < SCROLL_DOUBLE_TAP_DISTANCE && Math.abs(dy) < SCROLL_DOUBLE_TAP_DISTANCE) {
+                                resetStreamViewTransform();
+                                lastScrollClickTime = 0;
+                            } else {
+                                lastScrollClickTime = now;
+                                lastScrollClickX = event.getX(0);
+                                lastScrollClickY = event.getY(0);
+                            }
+                        } else {
+                            lastScrollClickTime = now;
+                            lastScrollClickX = event.getX(0);
+                            lastScrollClickY = event.getY(0);
+                        }
+                    } else {
+                        lastScrollClickTime = 0;
+                    }
+                    streamViewBaseX = streamView.getTranslationX();
+                    streamViewBaseY = streamView.getTranslationY();
+                    streamViewBaseScale = streamView.getScaleX();
+                    scrollTouchPointerCount = 0;
+                }
+                return true;
+
+            case MotionEvent.ACTION_POINTER_UP:
+            case MotionEvent.ACTION_CANCEL:
+                if (pointerCount <= 1) {
+                    streamViewBaseX = streamView.getTranslationX();
+                    streamViewBaseY = streamView.getTranslationY();
+                    streamViewBaseScale = streamView.getScaleX();
+                    scrollTouchPointerCount = 0;
+                }
+                return true;
+        }
+        return false;
+    }
+
     private void setPreferredOrientationForCurrentDisplay() {
-        Display display = getWindowManager().getDefaultDisplay();
-
-        // For semi-square displays, we use more complex logic to determine which orientation to use (if any)
-        if (PreferenceConfiguration.isSquarishScreen(display)) {
-            int desiredOrientation = Configuration.ORIENTATION_UNDEFINED;
-
-            // OSC doesn't properly support portrait displays, so don't use it in portrait mode by default
-            if (prefConfig.onscreenController) {
-                desiredOrientation = Configuration.ORIENTATION_LANDSCAPE;
-            }
-
-            // For native resolution, we will lock the orientation to the one that matches the specified resolution
-            if (PreferenceConfiguration.isNativeResolution(prefConfig.width, prefConfig.height)) {
-                if (prefConfig.width > prefConfig.height) {
-                    desiredOrientation = Configuration.ORIENTATION_LANDSCAPE;
-                }
-                else {
-                    desiredOrientation = Configuration.ORIENTATION_PORTRAIT;
-                }
-            }
-
-            if (desiredOrientation == Configuration.ORIENTATION_LANDSCAPE) {
-                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
-            }
-            else if (desiredOrientation == Configuration.ORIENTATION_PORTRAIT) {
-                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
-            }
-            else {
-                // If we don't have a reason to lock to portrait or landscape, allow any orientation
-                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_USER);
-            }
+        // User preference: portrait forces portrait, everything else defaults to landscape
+        if ("portrait".equals(prefConfig.screenOrientation)) {
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
         }
         else {
-            // For regular displays, we always request landscape
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE);
         }
     }
@@ -596,6 +829,10 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                     virtualController.hide();
                 }
 
+                if (floatingWindow1 != null) {
+                    floatingWindow1.setVisibility(View.GONE);
+                }
+
                 performanceOverlayView.setVisibility(View.GONE);
                 notificationOverlayView.setVisibility(View.GONE);
 
@@ -612,6 +849,10 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
                 if (virtualController != null) {
                     virtualController.show();
+                }
+
+                if (floatingWindow1 != null) {
+                    floatingWindow1.setVisibility(View.VISIBLE);
                 }
 
                 if (prefConfig.enablePerfOverlay) {
@@ -1049,10 +1290,16 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             // Unbind from the discovery service
             unbindService(usbDriverServiceConnection);
         }
-
-        // Destroy the capture provider
+// Destroy the capture provider
         inputCaptureProvider.destroy();
+
+        // Stop the connection when Activity is truly destroyed
+        if (connected) {
+            stopConnection();
+        }
     }
+
+    public static final String LAST_STREAM_SESSION_PREF = "LastStreamSession";
 
     @Override
     protected void onPause() {
@@ -1064,9 +1311,30 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
             // Ungrab input to prevent further input device notifications
             setInputGrabState(false);
+        } else {
+            isInBackground = true;
+            decoderRenderer.notifyVideoBackground();
+
+            // Save current streaming session info for auto-resume
+            if (connected) {
+                saveStreamingSession();
+            }
         }
 
         super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        isInBackground = false;
+        decoderRenderer.notifyVideoForeground();
+
+        // Resume streaming if the surface is still valid and we need to restart the decoder
+        if (decoderNeedsRestart && connected && surfaceCreated) {
+            decoderNeedsRestart = false;
+            decoderRenderer.restartWithNewSurface(streamView.getHolder());
+        }
     }
 
     @Override
@@ -1079,66 +1347,69 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         if (virtualController != null) {
             virtualController.hide();
         }
+    }
 
-        if (conn != null) {
-            int videoFormat = decoderRenderer.getActiveVideoFormat();
+    private void saveStreamingSession() {
+        SharedPreferences prefs = getSharedPreferences(LAST_STREAM_SESSION_PREF, MODE_PRIVATE);
+        Intent intent = getIntent();
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.putString("host", intent.getStringExtra(EXTRA_HOST));
+        editor.putInt("port", intent.getIntExtra(EXTRA_PORT, NvHTTP.DEFAULT_HTTP_PORT));
+        editor.putInt("httpsPort", intent.getIntExtra(EXTRA_HTTPS_PORT, 0));
+        editor.putString("appName", intent.getStringExtra(EXTRA_APP_NAME));
+        editor.putInt("appId", intent.getIntExtra(EXTRA_APP_ID, 0));
+        editor.putBoolean("appHdr", intent.getBooleanExtra(EXTRA_APP_HDR, false));
+        editor.putString("uniqueId", intent.getStringExtra(EXTRA_UNIQUEID));
+        editor.putString("pcUuid", intent.getStringExtra(EXTRA_PC_UUID));
+        editor.putString("pcName", intent.getStringExtra(EXTRA_PC_NAME));
 
-            displayedFailureDialog = true;
-            stopConnection();
-
-            if (prefConfig.enableLatencyToast) {
-                int averageEndToEndLat = decoderRenderer.getAverageEndToEndLatency();
-                int averageDecoderLat = decoderRenderer.getAverageDecoderLatency();
-                String message = null;
-                if (averageEndToEndLat > 0) {
-                    message = getResources().getString(R.string.conn_client_latency)+" "+averageEndToEndLat+" ms";
-                    if (averageDecoderLat > 0) {
-                        message += " ("+getResources().getString(R.string.conn_client_latency_hw)+" "+averageDecoderLat+" ms)";
-                    }
-                }
-                else if (averageDecoderLat > 0) {
-                    message = getResources().getString(R.string.conn_hardware_latency)+" "+averageDecoderLat+" ms";
-                }
-
-                // Add the video codec to the post-stream toast
-                if (message != null) {
-                    message += " [";
-
-                    if ((videoFormat & MoonBridge.VIDEO_FORMAT_MASK_H264) != 0) {
-                        message += "H.264";
-                    }
-                    else if ((videoFormat & MoonBridge.VIDEO_FORMAT_MASK_H265) != 0) {
-                        message += "HEVC";
-                    }
-                    else if ((videoFormat & MoonBridge.VIDEO_FORMAT_MASK_AV1) != 0) {
-                        message += "AV1";
-                    }
-                    else {
-                        message += "UNKNOWN";
-                    }
-
-                    if ((videoFormat & MoonBridge.VIDEO_FORMAT_MASK_10BIT) != 0) {
-                        message += " HDR";
-                    }
-
-                    message += "]";
-                }
-
-                if (message != null) {
-                    Toast.makeText(this, message, Toast.LENGTH_LONG).show();
-                }
-            }
-
-            // Clear the tombstone count if we terminated normally
-            if (!reportedCrash && tombstonePrefs.getInt("CrashCount", 0) != 0) {
-                tombstonePrefs.edit()
-                        .putInt("CrashCount", 0)
-                        .putInt("LastNotifiedCrashCount", 0)
-                        .apply();
-            }
+        // Save server certificate for HTTPS
+        byte[] certData = intent.getByteArrayExtra(EXTRA_SERVER_CERT);
+        if (certData != null) {
+            editor.putString("serverCert", android.util.Base64.encodeToString(certData, android.util.Base64.DEFAULT));
         }
 
-        finish();
+        editor.putLong("timestamp", System.currentTimeMillis());
+        editor.apply();
+    }
+
+    private void saveFloatingWindow1Position(float x, float y, int parentWidth, int parentHeight) {
+        if (parentWidth <= 0 || parentHeight <= 0) return;
+        float xPercent = x / parentWidth;
+        float yPercent = y / parentHeight;
+        getSharedPreferences("FloatingWindow1Pos", MODE_PRIVATE)
+            .edit()
+            .putFloat("xPercent", xPercent)
+            .putFloat("yPercent", yPercent)
+            .apply();
+    }
+
+    private void restoreFloatingWindow1Position() {
+        View parent = (View) floatingWindow1.getParent();
+        if (parent == null) return;
+        int parentWidth = parent.getWidth();
+        int parentHeight = parent.getHeight();
+        if (parentWidth <= 0 || parentHeight <= 0) return;
+
+        int fwWidth = floatingWindow1.getWidth();
+        int fwHeight = floatingWindow1.getHeight();
+        if (fwWidth <= 0 || fwHeight <= 0) return;
+
+        SharedPreferences prefs = getSharedPreferences("FloatingWindow1Pos", MODE_PRIVATE);
+        if (!prefs.contains("xPercent")) return;
+
+        float xPercent = prefs.getFloat("xPercent", 0);
+        float yPercent = prefs.getFloat("yPercent", 0);
+
+        float x = xPercent * parentWidth;
+        float y = yPercent * parentHeight;
+
+        // Clamp to screen bounds
+        x = Math.max(0, Math.min(x, parentWidth - fwWidth));
+        y = Math.max(0, Math.min(y, parentHeight - fwHeight));
+
+        floatingWindow1.setX(x);
+        floatingWindow1.setY(y);
     }
 
     private void setInputGrabState(boolean grab) {
@@ -1308,9 +1579,8 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
     @Override
     public boolean handleKeyDown(KeyEvent event) {
-        // Pass-through virtual navigation keys (except BACK which we handle for stream menu)
-        if ((event.getFlags() & KeyEvent.FLAG_VIRTUAL_HARD_KEY) != 0 &&
-                event.getKeyCode() != KeyEvent.KEYCODE_BACK) {
+        // Pass-through virtual navigation keys
+        if ((event.getFlags() & KeyEvent.FLAG_VIRTUAL_HARD_KEY) != 0) {
             return false;
         }
 
@@ -1349,12 +1619,6 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                 return true;
             }
 
-            // Handle back key to show stream menu while streaming
-            if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && connected) {
-                showStreamMenu();
-                return true;
-            }
-
             // Pass through keyboard input if we're not grabbing
             if (!grabbedInput) {
                 return false;
@@ -1371,7 +1635,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                 // UTF-8 events don't auto-repeat on the host side.
                 int unicodeChar = event.getUnicodeChar();
                 if ((unicodeChar & KeyCharacterMap.COMBINING_ACCENT) == 0 && (unicodeChar & KeyCharacterMap.COMBINING_ACCENT_MASK) != 0) {
-                    conn.sendUtf8Text(""+(char)unicodeChar);
+                    sendTextWithHoldRelease(""+(char)unicodeChar);
                     return true;
                 }
 
@@ -1385,6 +1649,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
             conn.sendKeyboardInput(translated, KeyboardPacket.KEY_DOWN, getModifierState(event),
                     keyboardTranslator.hasNormalizedMapping(event.getKeyCode(), event.getDeviceId()) ? 0 : MoonBridge.SS_KBE_FLAG_NON_NORMALIZED);
+
+            // Release hold keys when any character key is pressed via keyboard path
+            releaseHoldOnTextInput();
         }
 
         return true;
@@ -1472,8 +1739,19 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             return false;
         }
 
-        conn.sendUtf8Text(event.getCharacters());
+        sendTextWithHoldRelease(event.getCharacters());
         return true;
+    }
+
+    private void sendTextWithHoldRelease(String text) {
+        conn.sendUtf8Text(text);
+        releaseHoldOnTextInput();
+    }
+
+    private void releaseHoldOnTextInput() {
+        if (floatingWindow2 != null && floatingWindow2.isHoldModeActive()) {
+            floatingWindow2.releaseAllHeldKeys();
+        }
     }
 
     private TouchContext getTouchContext(int actionIndex)
@@ -1490,42 +1768,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     public void toggleKeyboard() {
         LimeLog.info("Toggling keyboard overlay");
         InputMethodManager inputManager = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-        inputManager.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0);
-    }
-
-    private void showStreamMenu() {
-        LimeLog.info("Showing stream menu");
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle(R.string.stream_menu_title);
-
-        String[] items = {
-            getString(R.string.stream_menu_keyboard),
-            getString(R.string.stream_menu_exit)
-        };
-
-        builder.setItems(items, new android.content.DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(android.content.DialogInterface dialog, int which) {
-                switch (which) {
-                    case 0: // Show keyboard
-                        // Delay to let AlertDialog finish dismissing so it won't steal focus back
-                        new Handler().postDelayed(new Runnable() {
-                            @Override
-                            public void run() {
-                                toggleKeyboard();
-                            }
-                        }, 300);
-                        break;
-                    case 1: // Exit stream
-                        stopConnection();
-                        finish();
-                        break;
-                }
-            }
-        });
-
-        builder.setNegativeButton(R.string.applist_menu_cancel, null);
-        builder.show();
+        inputManager.toggleSoftInput(0, 0);
     }
 
     private byte getLiTouchTypeFromEvent(MotionEvent event) {
@@ -2017,6 +2260,11 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             // This case is for fingers
             else
             {
+                // Handle scroll mode touch events
+                if (handleScrollModeTouch(view, event)) {
+                    return true;
+                }
+
                 if (virtualController != null &&
                         (virtualController.getControllerMode() == VirtualController.ControllerMode.MoveButtons ||
                          virtualController.getControllerMode() == VirtualController.ControllerMode.ResizeButtons)) {
@@ -2252,6 +2500,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private void stopConnection() {
         if (connecting || connected) {
             connecting = connected = false;
+            attemptedConnection = false;
             updatePipAutoEnter();
 
             controllerHandler.stop();
@@ -2532,6 +2781,12 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             throw new IllegalStateException("Surface changed before creation!");
         }
 
+        if (decoderNeedsRestart && connected) {
+            decoderNeedsRestart = false;
+            decoderRenderer.restartWithNewSurface(holder);
+            return;
+        }
+
         if (!attemptedConnection) {
             attemptedConnection = true;
 
@@ -2549,6 +2804,12 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         float desiredFrameRate;
 
         surfaceCreated = true;
+
+        // Resume streaming if the decoder needs a restart
+        if (decoderNeedsRestart && connected) {
+            decoderNeedsRestart = false;
+            decoderRenderer.restartWithNewSurface(holder);
+        }
 
         // Android will pick the lowest matching refresh rate for a given frame rate value, so we want
         // to report the true FPS value if refresh rate reduction is enabled. We also report the true
@@ -2586,13 +2847,11 @@ public class Game extends Activity implements SurfaceHolder.Callback,
             throw new IllegalStateException("Surface destroyed before creation!");
         }
 
-        if (attemptedConnection) {
-            // Let the decoder know immediately that the surface is gone
-            decoderRenderer.prepareForStop();
+        surfaceCreated = false;
 
-            if (connected) {
-                stopConnection();
-            }
+        if (connected) {
+            decoderRenderer.prepareForStop();
+            decoderNeedsRestart = true;
         }
     }
 

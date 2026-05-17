@@ -285,8 +285,9 @@
     <string name="summary_seekbar_vibrate_fallback_strength">增强或减弱设备的震动强度</string>
     <string name="analogscroll_none">默认 (两个摇杆都控制鼠标)</string>
 
-    <!-- Stream menu -->
-    <string name="stream_menu_title">菜单</string>
-    <string name="stream_menu_keyboard">打开手机软键盘</string>
-    <string name="stream_menu_exit">退出串流</string>
+    <!-- 屏幕方向 -->
+    <string name="title_screen_orientation">屏幕方向</string>
+    <string name="summary_screen_orientation">串流时强制使用指定的屏幕方向</string>
+    <string name="orientation_landscape">横屏</string>
+    <string name="orientation_portrait">竖屏</string>
 </resources>

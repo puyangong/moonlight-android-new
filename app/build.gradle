@@ -79,6 +79,15 @@ android {
         }
     }
 
+    signingConfigs {
+        release {
+            storeFile file("../moonlight.keystore")
+            storePassword "moonlight123"
+            keyAlias "moonlight"
+            keyPassword "moonlight123"
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix ".debug"
@@ -125,6 +134,8 @@ android {
 
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+
+            signingConfig signingConfigs.release
         }
     }
 

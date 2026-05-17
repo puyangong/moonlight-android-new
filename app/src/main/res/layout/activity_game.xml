@@ -50,4 +50,17 @@
         android:preferKeepClear="true"
         android:visibility="gone" />
 
+    <com.limelight.ui.FloatingWindow2
+        android:id="@+id/floatingWindow2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:visibility="gone" />
+
+    <com.limelight.ui.FloatingWindow1
+        android:id="@+id/floatingWindow1"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="left|center_vertical" />
+
 </merge>

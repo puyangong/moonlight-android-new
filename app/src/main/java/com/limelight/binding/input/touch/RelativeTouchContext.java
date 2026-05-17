@@ -23,11 +23,6 @@ public class RelativeTouchContext implements TouchContext {
     private int pointerCount;
     private int maxPointerCountInGesture;
 
-    // Double tap detection
-    private long lastTapTime = 0;
-    private int lastTapX = 0;
-    private int lastTapY = 0;
-
     private final NvConnection conn;
     private final int actionIndex;
     private final int referenceWidth;
@@ -94,9 +89,6 @@ public class RelativeTouchContext implements TouchContext {
     private static final int TAP_TIME_THRESHOLD = 250;
     private static final int DRAG_TIME_THRESHOLD = 650;
 
-    private static final int DOUBLE_TAP_TIME_THRESHOLD = 300;
-    private static final int DOUBLE_TAP_DISTANCE_THRESHOLD = 40;
-
     private static final int SCROLL_SPEED_FACTOR = 5;
 
     public RelativeTouchContext(NvConnection conn, int actionIndex,
@@ -143,21 +135,6 @@ public class RelativeTouchContext implements TouchContext {
         return isWithinTapBounds(lastTouchX, lastTouchY) && timeDelta <= TAP_TIME_THRESHOLD;
     }
 
-    private boolean isDoubleTap(long eventTime, int touchX, int touchY) {
-        if (lastTapTime == 0) {
-            return false;
-        }
-
-        long timeDelta = eventTime - lastTapTime;
-        if (timeDelta > DOUBLE_TAP_TIME_THRESHOLD) {
-            return false;
-        }
-
-        int xDelta = Math.abs(touchX - lastTapX);
-        int yDelta = Math.abs(touchY - lastTapY);
-        return xDelta <= DOUBLE_TAP_DISTANCE_THRESHOLD && yDelta <= DOUBLE_TAP_DISTANCE_THRESHOLD;
-    }
-
     private byte getMouseButtonIndex()
     {
         if (actionIndex == 1) {
@@ -200,7 +177,7 @@ public class RelativeTouchContext implements TouchContext {
             return;
         }
 
-        // Cancel timers
+        // Cancel the drag timer
         cancelDragTimer();
 
         byte buttonIndex = getMouseButtonIndex();
@@ -211,27 +188,14 @@ public class RelativeTouchContext implements TouchContext {
         }
         else if (isTap(eventTime))
         {
-            // Check for double tap -> right click
-            if (isDoubleTap(eventTime, lastTouchX, lastTouchY)) {
-                // Double tap = right click
-                conn.sendMouseButtonDown(MouseButtonPacket.BUTTON_RIGHT);
-                Runnable buttonUpRunnable = buttonUpRunnables[MouseButtonPacket.BUTTON_RIGHT - 1];
-                handler.removeCallbacks(buttonUpRunnable);
-                handler.postDelayed(buttonUpRunnable, 100);
-                // Reset last tap to prevent triple tap being detected as another double tap
-                lastTapTime = 0;
-            } else {
-                // Normal click (record for potential double tap)
-                lastTapTime = eventTime;
-                lastTapX = lastTouchX;
-                lastTapY = lastTouchY;
+            // Lower the mouse button
+            conn.sendMouseButtonDown(buttonIndex);
 
-                // Normal click logic
-                conn.sendMouseButtonDown(buttonIndex);
-                Runnable buttonUpRunnable = buttonUpRunnables[buttonIndex - 1];
-                handler.removeCallbacks(buttonUpRunnable);
-                handler.postDelayed(buttonUpRunnable, 100);
-            }
+            // Release the mouse button in 100ms to allow for apps that use polling
+            // to detect mouse button presses.
+            Runnable buttonUpRunnable = buttonUpRunnables[buttonIndex - 1];
+            handler.removeCallbacks(buttonUpRunnable);
+            handler.postDelayed(buttonUpRunnable, 100);
         }
     }
 
@@ -342,7 +306,7 @@ public class RelativeTouchContext implements TouchContext {
     public void cancelTouch() {
         cancelled = true;
 
-        // Cancel timers
+        // Cancel the drag timer
         cancelDragTimer();
 
         // If it was a confirmed drag, we'll need to raise the button now
