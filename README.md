@@ -11,7 +11,7 @@
 1. 下载 APK 文件（`app-nonRoot-release.apk`）
 2. 允许安装未知来源应用（设置 → 安全 → 允许）
 3. 首次启动需与 PC 端的 Sunshine/GeForce Experience 配对
-4. ***基础使用：****右键：一指长按一指点击；滚动屏幕：两指滑动***
+4. ***基础使用：右键：一指长按一指点击；滚动屏幕：两指滑动***
 
 ---
 
@@ -118,6 +118,5 @@
 |------|------|
 | 基础版本 | Moonlight Android (开源) |
 | 新增功能 | 悬浮窗 1/2、长按模式、后台保活、自动恢复、位置记忆 |
-| 支持架构 | arm64-v8a, armeabi-v7a, x86, x86_64 |
+| 支持架构 | arm64-v8a, armeabi-v7a, x86, x86_64 (仅提供arm64-v8a的下载链接)|
 | 最低 Android | API 21 (Android 5.0) |
-| 签名 | 自签名证书（moonlight.keystore） |
