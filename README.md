@@ -2,7 +2,7 @@
 
 ## 概述
 
-本软件基于开源项目 [Moonlight Android](https://github.com/moonlight-stream/moonlight-android) 进行二次开发，新增了**应用内悬浮窗**、**后台串流保活**、**切后台自动恢复串流**、**长按模式与软键盘集成**等实用功能，大幅提升远程串流的操作便利性。
+本软件基于开源项目 [Moonlight Android](https://github.com/moonlight-stream/moonlight-android) 进行二次开发，新增了**应用内悬浮窗**、**切后台自动恢复串流**、**长按模式与软键盘集成**等实用功能，大幅提升远程串流的操作便利性。
 
 ---
 
