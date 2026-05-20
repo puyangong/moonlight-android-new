@@ -22,11 +22,9 @@ PS.内网穿透需要的条件比较苛刻，建议异地组网，但是异地�
 
 ### 1.竖屏显示
 
-<img src="./pic/Screenshot_2026-05-20-17-54-05-86_e4fd1c2eedf418b.jpg" style="zoom:25%;" /><img src="./pic/Screenshot_2026-05-20-18-02-42-67_e4fd1c2eedf418b.jpg" style="zoom:25%;" />
+<img src="./pic/Screenshot_2026-05-20-17-54-05-86_e4fd1c2eedf418b.jpg" style="zoom:25%;" />
 
 ### 2.贴边悬浮窗
-
-<img src="./pic/Screenshot_2026-05-20-18-27-45-48_e4fd1c2eedf418b.jpg" style="zoom:25%;" />
 
 拖动悬浮窗第一个按钮可以移动悬浮窗，悬浮窗自动贴边.
 
