@@ -25,7 +25,11 @@ jobs:
 
     - name: 打包
       run: ./gradlew assembleRelease
-
+      
+    - uses: actions/upload-artifact@v7
+      with:
+        name: 上传Release apk
+        path: *.apk
 
       
     - name: Release
