@@ -24,6 +24,12 @@ jobs:
       run: chmod +x gradlew
     - name: Build with Gradle
       run: ./gradlew build
+
+    - name: 打包
+      run: ./gradlew assembleRelease
+
+
+      
     - name: Release
       uses: softprops/action-gh-release@v3
       if: github.ref_type == 'tag'
