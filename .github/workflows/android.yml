@@ -46,6 +46,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           tag_prefix: 'moonlight-android-new-v'
           tag_template: 'yy-i'
+          previous_tag: 'moonlight-android-new-v25-01'
             
       
     - name: Release
