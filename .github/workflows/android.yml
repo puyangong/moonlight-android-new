@@ -29,7 +29,8 @@ jobs:
     - uses: actions/upload-artifact@v7
       with:
         name: 上传Release apk
-        path: *.apk
+        path: |
+            *.apk
 
       
     - name: Release
