@@ -27,6 +27,7 @@ public class FloatingWindow2 extends LinearLayout {
 
     private boolean holdModeActive = false;
     private boolean isReleasing = false;
+    private boolean keyboardShown = false;
     private Set<Integer> heldKeys = new HashSet<>();
     private Map<View, Integer> buttonToKeyMap = new HashMap<>();
     private Map<View, ButtonState> buttonStates = new HashMap<>();
@@ -177,8 +178,9 @@ public class FloatingWindow2 extends LinearLayout {
         keyboardBtn.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View v) {
+                keyboardShown = !keyboardShown;
                 if (keyboardToggleListener != null) {
-                    keyboardToggleListener.onKeyboardToggled(true);
+                    keyboardToggleListener.onKeyboardToggled(keyboardShown);
                 }
             }
         });
@@ -336,9 +338,16 @@ public class FloatingWindow2 extends LinearLayout {
     public void setOnHoldModeChangeListener(OnHoldModeChangeListener listener) {
         this.holdModeChangeListener = listener;
     }
-
-    public void setOnKeyboardToggleListener(OnKeyboardToggleListener listener) {
+public void setOnKeyboardToggleListener(OnKeyboardToggleListener listener) {
         this.keyboardToggleListener = listener;
+    }
+
+    public boolean isKeyboardShown() {
+        return keyboardShown;
+    }
+
+    public void setKeyboardShown(boolean shown) {
+        this.keyboardShown = shown;
     }
 
     public interface OnKeyEventListener {

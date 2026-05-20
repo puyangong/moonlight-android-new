@@ -1414,6 +1414,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         if (floatingWindow2 != null) {
             editor.putBoolean("fw2HoldMode", floatingWindow2.isHoldModeActive());
             editor.putInt("fw2Visibility", floatingWindow2.getVisibility());
+            editor.putBoolean("fw2KeyboardShown", floatingWindow2.isKeyboardShown());
 
             // Save held keys
             Set<Integer> heldKeys = floatingWindow2.getHeldKeyCodes();
@@ -1465,9 +1466,37 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                             } catch (IllegalArgumentException ignored) {}
                         }
 
-                        // Restore keyboard button visual only (don't trigger actual keyboard)
-                        floatingWindow1.restoreKeyboardButtonState(
-                            prefs.getBoolean("fw1KeyboardActive", false));
+                        // Restore keyboard button state and auto-show keyboard if it was open
+                        boolean keyboardActive = prefs.getBoolean("fw1KeyboardActive", false);
+                        floatingWindow1.restoreKeyboardButtonState(keyboardActive);
+                        if (keyboardActive) {
+                            // Show floating window 2
+                            if (floatingWindow2 != null) {
+                                floatingWindow2.setVisibility(View.VISIBLE);
+                            }
+                        }
+                        // Restore soft keyboard independently if it was shown
+                        boolean fw2KeyboardShown = prefs.getBoolean("fw2KeyboardShown", false);
+                        if (fw2KeyboardShown) {
+                            if (floatingWindow2 != null) {
+                                floatingWindow2.setKeyboardShown(true);
+                            }
+                            // Poll connected state: show keyboard once connection is restored
+                            final InputMethodManager inputManager = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+                            final Handler keyboardHandler = new Handler();
+                            final Runnable[] keyboardPoller = new Runnable[1];
+                            keyboardPoller[0] = new Runnable() {
+                                @Override
+                                public void run() {
+                                    if (connected) {
+                                        inputManager.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0);
+                                    } else {
+                                        keyboardHandler.postDelayed(keyboardPoller[0], 200);
+                                    }
+                                }
+                            };
+                            keyboardHandler.postDelayed(keyboardPoller[0], 200);
+                        }
                     }
 
                     // 3. Restore FloatingWindow2 state
