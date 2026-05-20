@@ -3,14 +3,20 @@ name: Android CI
 on:
   push:
     branches: [ "main" ]
+       
   pull_request:
     branches: [ "main" ]
 
+
+
+
+  
 jobs:
   build:
 
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write        # 授予推送 tag 的权限
     steps:
     - uses: actions/checkout@v4
     - name: set up JDK 17
@@ -27,20 +33,27 @@ jobs:
       run: ./gradlew assembleRelease
       
     - name: 下载
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@v4
       with:
         name: apk
         path: |
             **/*.apk
 
+    - name: Generate release tag
+      id: generate_release_tag
+      uses: amitsingh-007/next-release-tag@v6.3.0
+      with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          tag_prefix: 'moonlight-android-new-'
+          tag_template: 'yy-i'
+            
       
     - name: Release
       uses: softprops/action-gh-release@v3
-      if: github.ref_type == 'tag' || github.ref_type == 'branch'
       with:
-        draft: false
-        prerelease: false
+        name: Release ${{ steps.generate_release_tag.outputs.next_release_tag }}
+        tag_name: ${{ steps.generate_release_tag.outputs.next_release_tag }}
         files: |
             **/*.apk
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        generate_release_notes: true
+        token: ${{secrets.GITHUB_TOKEN}}
