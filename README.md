@@ -14,7 +14,7 @@ PS.内网穿透需要的条件比较苛刻，建议异地组网，但是异地�
 
 在输入设置中打开如图的配置
 
-<img src="./pic/Screenshot_2026-05-20-18-11-27-01_e4fd1c2eedf418b.jpg" style="zoom:25%;" />
+<img src="./pic/Screenshot_2026-05-20-18-11-27-01_e4fd1c2eedf418b.jpg" style="zoom:10%;" />
 
 **之后在连接到电脑后，右键：一指长按一指点击；滚动屏幕：两指滑动.**
 
@@ -22,17 +22,17 @@ PS.内网穿透需要的条件比较苛刻，建议异地组网，但是异地�
 
 ### 1.竖屏显示
 
-<img src="./pic/Screenshot_2026-05-20-17-54-05-86_e4fd1c2eedf418b.jpg" style="zoom:25%;" /><img src="./pic/Screenshot_2026-05-20-18-02-42-67_e4fd1c2eedf418b.jpg" style="zoom:25%;" />
+<img src="./pic/Screenshot_2026-05-20-17-54-05-86_e4fd1c2eedf418b.jpg" style="zoom:10%;" /><img src="./pic/Screenshot_2026-05-20-18-02-42-67_e4fd1c2eedf418b.jpg" style="zoom:10%;" />
 
 ### 2.贴边悬浮窗
 
-<img src="./pic/Screenshot_2026-05-20-18-27-45-48_e4fd1c2eedf418b.jpg" style="zoom:25%;" />
+<img src="./pic/Screenshot_2026-05-20-18-27-45-48_e4fd1c2eedf418b.jpg" style="zoom:10%;" />
 
 拖动悬浮窗第一个按钮可以移动悬浮窗，悬浮窗自动贴边.
 
 ### 3.缩放和拖动屏幕
 
-<img src="./pic/Screenshot_2026-05-20-18-27-45-48_e4fd1c2eedf418b.jpg" style="zoom:25%;" />
+<img src="./pic/Screenshot_2026-05-20-18-27-45-48_e4fd1c2eedf418b.jpg" style="zoom:10%;" />
 
 点击悬浮窗第2个按钮操作屏幕，二指缩放，单指拖动.双击屏幕恢复到初始状态.
 
@@ -40,7 +40,7 @@ PS.内网穿透需要的条件比较苛刻，建议异地组网，但是异地�
 
 ### 4.内置键盘
 
-<img src="./pic/Screenshot_2026-05-20-18-47-20-87_e4fd1c2eedf418b.jpg" style="zoom:25%;" />
+<img src="./pic/Screenshot_2026-05-20-18-47-20-87_e4fd1c2eedf418b.jpg" style="zoom:10%;" />
 
 点击悬浮窗第4个按钮可以打开键盘，再次点击关闭键盘.
 
