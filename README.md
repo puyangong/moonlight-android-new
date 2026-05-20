@@ -26,13 +26,13 @@ PS.内网穿透需要的条件比较苛刻，建议异地组网，但是异地�
 
 ### 2.贴边悬浮窗
 
-<img src="./../../../Downloads/Screenshot_2026-05-20-18-27-45-48_e4fd1c2eedf418b.jpg" alt="Screenshot_2026-05-20-18-27-45-48_e4fd1c2eedf418b" style="zoom:25%;" />
+
 
 拖动悬浮窗第一个按钮可以移动悬浮窗，悬浮窗自动贴边.
 
 ### 3.缩放和拖动屏幕
 
-<img src="./pic/Screenshot_2026-05-20-18-06-19-77_e4fd1c2eedf418b.jpg" style="zoom:25%;" />
+<img src="./pic/Screenshot_2026-05-20-18-27-45-48_e4fd1c2eedf418b.jpg" style="zoom:25%;" />
 
 点击悬浮窗第2个按钮操作屏幕，二指缩放，单指拖动.双击屏幕恢复到初始状态.
 
