@@ -36,6 +36,7 @@ public class FloatingWindow2 extends LinearLayout {
     private OnHoldModeChangeListener holdModeChangeListener;
     private Button holdBtn;
     private OnKeyboardToggleListener keyboardToggleListener;
+    private Button keyboardBtn;
 
     private enum ButtonState {
         NORMAL,
@@ -164,7 +165,7 @@ public class FloatingWindow2 extends LinearLayout {
         row3.setOrientation(LinearLayout.HORIZONTAL);
         row3.setGravity(Gravity.CENTER_VERTICAL);
 
-        Button keyboardBtn = new Button(context);
+        keyboardBtn = new Button(context);
         keyboardBtn.setText("软键盘");
         keyboardBtn.setTextColor(BTN_TEXT_COLOR);
         keyboardBtn.setTextSize(10);
@@ -345,9 +346,17 @@ public void setOnKeyboardToggleListener(OnKeyboardToggleListener listener) {
     public boolean isKeyboardShown() {
         return keyboardShown;
     }
-
-    public void setKeyboardShown(boolean shown) {
+public void setKeyboardShown(boolean shown) {
         this.keyboardShown = shown;
+    }
+
+    public void setKeyboardButtonHighlight(boolean highlight) {
+        if (keyboardBtn != null) {
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(highlight ? Color.parseColor("#33ADD8E6") : INACTIVE_COLOR);
+            bg.setCornerRadius(dpToPx(getContext(), 4));
+            keyboardBtn.setBackground(bg);
+        }
     }
 
     public interface OnKeyEventListener {

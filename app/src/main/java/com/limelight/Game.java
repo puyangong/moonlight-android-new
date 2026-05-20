@@ -75,6 +75,7 @@ import android.view.View.OnGenericMotionListener;
 import android.view.View.OnSystemUiVisibilityChangeListener;
 import android.view.View.OnTouchListener;
 import android.view.Window;
+import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.view.inputmethod.InputMethodManager;
@@ -155,6 +156,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     private FloatingWindow1 floatingWindow1;
     private FloatingWindow2 floatingWindow2;
     private boolean scrollModeActive = false;
+    private boolean softKeyboardVisible = false;
     private float streamViewBaseX = 0, streamViewBaseY = 0;
     private float streamViewBaseScale = 1.0f;
     private float scrollTouchStartX, scrollTouchStartY;
@@ -300,6 +302,21 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         // Initialize floating window 2
         floatingWindow2 = findViewById(R.id.floatingWindow2);
         setupFloatingWindow2();
+
+        // Listen for IME visibility changes to sync keyboard button highlight (API 30+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            final View decorView = getWindow().getDecorView();
+            decorView.setOnApplyWindowInsetsListener(new View.OnApplyWindowInsetsListener() {
+                @Override
+                public WindowInsets onApplyWindowInsets(View v, WindowInsets insets) {
+                    boolean imeVisible = insets.isVisible(WindowInsets.Type.ime());
+                    if (imeVisible != softKeyboardVisible) {
+                        setSoftKeyboardVisible(imeVisible);
+                    }
+                    return v.onApplyWindowInsets(insets);
+                }
+            });
+        }
 
         inputCaptureProvider = InputCaptureManager.getInputCaptureProvider(this, this);
 
@@ -651,14 +668,12 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         floatingWindow1.setOnKeyboardToggleListener(new FloatingWindow1.OnKeyboardToggleListener() {
             @Override
             public void onKeyboardToggled(boolean active) {
-                InputMethodManager inputManager = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
                 if (active) {
                     floatingWindow2.setVisibility(View.VISIBLE);
-                    inputManager.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0);
                 } else {
                     floatingWindow2.setVisibility(View.GONE);
-                    inputManager.hideSoftInputFromWindow(streamView.getWindowToken(), 0);
                 }
+                setSoftKeyboardVisible(active);
             }
         });
 // Restore saved FloatingWindow1 position (post to wait for layout)
@@ -692,14 +707,38 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         floatingWindow2.setOnKeyboardToggleListener(new FloatingWindow2.OnKeyboardToggleListener() {
             @Override
             public void onKeyboardToggled(boolean active) {
-                InputMethodManager inputManager = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-                if (active) {
-                    inputManager.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0);
-                } else {
-                    inputManager.hideSoftInputFromWindow(streamView.getWindowToken(), 0);
-                }
+                setSoftKeyboardVisible(active);
             }
         });
+    }
+
+    private void setSoftKeyboardVisible(boolean visible) {
+        if (softKeyboardVisible == visible) return;
+        softKeyboardVisible = visible;
+
+        if (floatingWindow2 != null) {
+            floatingWindow2.setKeyboardButtonHighlight(visible);
+            floatingWindow2.setKeyboardShown(visible);
+        }
+
+        InputMethodManager inputManager = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (visible) {
+            if (floatingWindow2 != null && floatingWindow2.getVisibility() != View.VISIBLE) {
+                floatingWindow2.setVisibility(View.VISIBLE);
+            }
+            inputManager.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0);
+        } else {
+            inputManager.hideSoftInputFromWindow(streamView.getWindowToken(), 0);
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (softKeyboardVisible) {
+            setSoftKeyboardVisible(false);
+        } else {
+            super.onBackPressed();
+        }
     }
 
     private void resetStreamViewTransform() {
@@ -1414,7 +1453,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         if (floatingWindow2 != null) {
             editor.putBoolean("fw2HoldMode", floatingWindow2.isHoldModeActive());
             editor.putInt("fw2Visibility", floatingWindow2.getVisibility());
-            editor.putBoolean("fw2KeyboardShown", floatingWindow2.isKeyboardShown());
+            editor.putBoolean("softKeyboardVisible", softKeyboardVisible);
+            // Keep fw2KeyboardShown for backward compatibility
+            editor.putBoolean("fw2KeyboardShown", softKeyboardVisible);
 
             // Save held keys
             Set<Integer> heldKeys = floatingWindow2.getHeldKeyCodes();
@@ -1477,19 +1518,19 @@ public class Game extends Activity implements SurfaceHolder.Callback,
                         }
                         // Restore soft keyboard independently if it was shown
                         boolean fw2KeyboardShown = prefs.getBoolean("fw2KeyboardShown", false);
-                        if (fw2KeyboardShown) {
+                        boolean wasKeyboardVisible = prefs.getBoolean("softKeyboardVisible", fw2KeyboardShown);
+                        if (wasKeyboardVisible) {
                             if (floatingWindow2 != null) {
                                 floatingWindow2.setKeyboardShown(true);
                             }
                             // Poll connected state: show keyboard once connection is restored
-                            final InputMethodManager inputManager = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
                             final Handler keyboardHandler = new Handler();
                             final Runnable[] keyboardPoller = new Runnable[1];
                             keyboardPoller[0] = new Runnable() {
                                 @Override
                                 public void run() {
                                     if (connected) {
-                                        inputManager.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0);
+                                        setSoftKeyboardVisible(true);
                                     } else {
                                         keyboardHandler.postDelayed(keyboardPoller[0], 200);
                                     }
@@ -1910,8 +1951,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     @Override
     public void toggleKeyboard() {
         LimeLog.info("Toggling keyboard overlay");
-        InputMethodManager inputManager = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-        inputManager.toggleSoftInput(0, 0);
+        setSoftKeyboardVisible(!softKeyboardVisible);
     }
 
     private byte getLiTouchTypeFromEvent(MotionEvent event) {
