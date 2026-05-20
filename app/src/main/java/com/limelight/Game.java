@@ -88,6 +88,7 @@ import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.Locale;
+import java.util.Set;
 
 
 public class Game extends Activity implements SurfaceHolder.Callback,
@@ -1300,6 +1301,7 @@ public class Game extends Activity implements SurfaceHolder.Callback,
     }
 
     public static final String LAST_STREAM_SESSION_PREF = "LastStreamSession";
+    public static final String UI_STATE_PREF = "UiState";
 
     @Override
     protected void onPause() {
@@ -1311,9 +1313,15 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
             // Ungrab input to prevent further input device notifications
             setInputGrabState(false);
+
+            // Clear saved streaming session to prevent unwanted auto-resume on next launch
+            getSharedPreferences(LAST_STREAM_SESSION_PREF, MODE_PRIVATE).edit().clear().apply();
         } else {
             isInBackground = true;
             decoderRenderer.notifyVideoBackground();
+
+            // Save UI state (screen position, zoom, floating window states)
+            saveUiState();
 
             // Save current streaming session info for auto-resume
             if (connected) {
@@ -1329,6 +1337,9 @@ public class Game extends Activity implements SurfaceHolder.Callback,
         super.onResume();
         isInBackground = false;
         decoderRenderer.notifyVideoForeground();
+
+        // Restore UI state (screen position, zoom, floating windows, keyboard)
+        restoreUiState();
 
         // Resume streaming if the surface is still valid and we need to restart the decoder
         if (decoderNeedsRestart && connected && surfaceCreated) {
@@ -1371,6 +1382,109 @@ public class Game extends Activity implements SurfaceHolder.Callback,
 
         editor.putLong("timestamp", System.currentTimeMillis());
         editor.apply();
+    }
+
+    private void saveUiState() {
+        if (streamView == null) return;
+        SharedPreferences prefs = getSharedPreferences(UI_STATE_PREF, MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+
+        // Screen position & zoom
+        editor.putFloat("screenTransX", streamView.getTranslationX());
+        editor.putFloat("screenTransY", streamView.getTranslationY());
+        editor.putFloat("screenScale", streamView.getScaleX());
+        editor.putBoolean("scrollModeActive", scrollModeActive);
+
+        // FloatingWindow1 state
+        if (floatingWindow1 != null) {
+            editor.putString("fw1Mode", floatingWindow1.getMode().name());
+            editor.putBoolean("fw1KeyboardActive", floatingWindow1.isKeyboardActive());
+
+            // Also save position
+            View parent = (View) floatingWindow1.getParent();
+            if (parent != null && parent.getWidth() > 0) {
+                saveFloatingWindow1Position(
+                    floatingWindow1.getX(), floatingWindow1.getY(),
+                    parent.getWidth(), parent.getHeight()
+                );
+            }
+        }
+
+        // FloatingWindow2 state
+        if (floatingWindow2 != null) {
+            editor.putBoolean("fw2HoldMode", floatingWindow2.isHoldModeActive());
+            editor.putInt("fw2Visibility", floatingWindow2.getVisibility());
+
+            // Save held keys
+            Set<Integer> heldKeys = floatingWindow2.getHeldKeyCodes();
+            if (heldKeys != null && !heldKeys.isEmpty()) {
+                StringBuilder sb = new StringBuilder();
+                for (int key : heldKeys) {
+                    if (sb.length() > 0) sb.append(",");
+                    sb.append(key);
+                }
+                editor.putString("fw2HeldKeys", sb.toString());
+            } else {
+                editor.remove("fw2HeldKeys");
+            }
+        }
+
+        editor.apply();
+    }
+
+    private void restoreUiState() {
+        final SharedPreferences prefs = getSharedPreferences(UI_STATE_PREF, MODE_PRIVATE);
+        if (!prefs.contains("screenScale")) return; // No saved state
+
+        // Post to ensure layout is complete before restoring transforms
+        if (streamView != null) {
+            streamView.post(new Runnable() {
+                @Override
+                public void run() {
+                    // 1. Restore screen position & zoom FIRST
+                    float transX = prefs.getFloat("screenTransX", 0);
+                    float transY = prefs.getFloat("screenTransY", 0);
+                    float scale = prefs.getFloat("screenScale", 1.0f);
+                    streamView.setTranslationX(transX);
+                    streamView.setTranslationY(transY);
+                    streamView.setScaleX(scale);
+                    streamView.setScaleY(scale);
+                    streamViewBaseX = transX;
+                    streamViewBaseY = transY;
+                    streamViewBaseScale = scale;
+
+                    // 2. Restore FloatingWindow1 mode (listener will capture correct base values)
+                    if (floatingWindow1 != null) {
+                        String fw1ModeStr = prefs.getString("fw1Mode", null);
+                        if (fw1ModeStr != null) {
+                            try {
+                                FloatingWindow1.Mode mode = FloatingWindow1.Mode.valueOf(fw1ModeStr);
+                                if (floatingWindow1.getMode() != mode) {
+                                    floatingWindow1.setMode(mode);
+                                }
+                            } catch (IllegalArgumentException ignored) {}
+                        }
+
+                        // Restore keyboard button visual only (don't trigger actual keyboard)
+                        floatingWindow1.restoreKeyboardButtonState(
+                            prefs.getBoolean("fw1KeyboardActive", false));
+                    }
+
+                    // 3. Restore FloatingWindow2 state
+                    if (floatingWindow2 != null) {
+                        // Restore hold mode (will release held keys if turning off)
+                        boolean fw2Hold = prefs.getBoolean("fw2HoldMode", false);
+                        if (fw2Hold != floatingWindow2.isHoldModeActive()) {
+                            floatingWindow2.setHoldModeActive(fw2Hold);
+                        }
+
+                        // Restore visibility (may be overridden by keyboard toggle above)
+                        int fw2Vis = prefs.getInt("fw2Visibility", View.GONE);
+                        floatingWindow2.setVisibility(fw2Vis);
+                    }
+                }
+            });
+        }
     }
 
     private void saveFloatingWindow1Position(float x, float y, int parentWidth, int parentHeight) {

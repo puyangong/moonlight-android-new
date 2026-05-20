@@ -388,13 +388,6 @@ public class AppView extends Activity implements AdapterFragmentCallbacks {
         String host = prefs.getString("host", null);
         if (host == null) return;
 
-        long timestamp = prefs.getLong("timestamp", 0);
-        // Only auto-resume if session was saved within the last 2 minutes
-        if (System.currentTimeMillis() - timestamp > 2 * 60 * 1000) {
-            prefs.edit().clear().apply();
-            return;
-        }
-
         int port = prefs.getInt("port", 0);
         int httpsPort = prefs.getInt("httpsPort", 0);
         String appName = prefs.getString("appName", null);

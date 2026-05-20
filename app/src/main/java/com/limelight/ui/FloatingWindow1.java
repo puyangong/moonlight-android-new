@@ -197,6 +197,12 @@ private void updateButtonColors() {
         return keyboardActive;
     }
 
+    /** Restore keyboard button visual state only, without triggering the toggle listener */
+    public void restoreKeyboardButtonState(boolean active) {
+        keyboardActive = active;
+        updateButtonColors();
+    }
+
     public void setOnKeyboardToggleListener(OnKeyboardToggleListener listener) {
         this.keyboardToggleListener = listener;
     }

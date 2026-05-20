@@ -57,6 +57,35 @@ public class FloatingWindow2 extends LinearLayout {
         init(context);
     }
 
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        // Measure each row's content (the LinearLayout inside each HorizontalScrollView)
+        // with UNSPECIFIED width to get the full natural content width
+        int maxContentWidth = 0;
+        int childCount = getChildCount();
+
+        for (int i = 0; i < childCount; i++) {
+            View scrollView = getChildAt(i);
+            if (scrollView instanceof HorizontalScrollView) {
+                View row = ((HorizontalScrollView) scrollView).getChildAt(0);
+                if (row != null) {
+                    int rowWidthSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+                    int rowHeightSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+                    row.measure(rowWidthSpec, rowHeightSpec);
+                    maxContentWidth = Math.max(maxContentWidth, row.getMeasuredWidth());
+                }
+            }
+        }
+
+        // Clamp to screen width
+        int screenWidth = MeasureSpec.getSize(widthMeasureSpec);
+        int targetWidth = Math.min(maxContentWidth, screenWidth);
+
+        // Re-measure with constrained width
+        int constrainedWidthSpec = MeasureSpec.makeMeasureSpec(targetWidth, MeasureSpec.EXACTLY);
+        super.onMeasure(constrainedWidthSpec, heightMeasureSpec);
+    }
+
     private void init(Context context) {
         setOrientation(LinearLayout.VERTICAL);
         setGravity(Gravity.CENTER_HORIZONTAL);
@@ -260,6 +289,9 @@ public class FloatingWindow2 extends LinearLayout {
             bg.setCornerRadius(dpToPx(getContext(), 4));
             holdBtn.setBackground(bg);
         }
+        if (!active) {
+            releaseAllHeldKeys();
+        }
         if (holdModeChangeListener != null) {
             holdModeChangeListener.onHoldModeChanged(active);
         }
@@ -267,6 +299,11 @@ public class FloatingWindow2 extends LinearLayout {
 
     public boolean isHoldModeActive() {
         return holdModeActive;
+    }
+
+    /** Get a copy of the currently held key codes (for state save/restore) */
+    public Set<Integer> getHeldKeyCodes() {
+        return new HashSet<>(heldKeys);
     }
 
     public void releaseAllHeldKeys() {
